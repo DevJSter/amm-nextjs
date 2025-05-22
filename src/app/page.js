@@ -1,6 +1,14 @@
 "use client";
 import { useState, useEffect } from 'react';
-import { ArrowDownUp, Plus, TrendingDown, TrendingUp, ChevronRight } from 'lucide-react';
+import { ArrowDownUp, Plus, TrendingDown, TrendingUp, ChevronRight, Info, Settings } from 'lucide-react';
+import { 
+  AMM_FORMULAS, 
+  AMM_CONFIGS, 
+  initializePool, 
+  calculateSwapOutput, 
+  executeSwap, 
+  getPoolPricing 
+} from './utility/fn.js';
 
 export default function CPMMDEXSimulator() {
   const [step, setStep] = useState('pairs'); // 'pairs', 'tokens', 'liquidity', 'trading'
@@ -8,6 +16,15 @@ export default function CPMMDEXSimulator() {
   const [tokenB, setTokenB] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  
+  // AMM Formula Selection
+  const [selectedFormula, setSelectedFormula] = useState(AMM_FORMULAS.CPMM);
+  const [formulaConfig, setFormulaConfig] = useState({
+    weightA: 0.5,
+    weightB: 0.5,
+    minPrice: 0.5,
+    maxPrice: 2.0
+  });
   
   // Token data
   const [tokenAData, setTokenAData] = useState(null);
@@ -17,9 +34,7 @@ export default function CPMMDEXSimulator() {
   // Liquidity pool state
   const [liquidityA, setLiquidityA] = useState('');
   const [liquidityB, setLiquidityB] = useState('');
-  const [reserveA, setReserveA] = useState(0);
-  const [reserveB, setReserveB] = useState(0);
-  const [constantK, setConstantK] = useState(0);
+  const [poolState, setPoolState] = useState(null);
   
   // Swap state
   const [swapAmount, setSwapAmount] = useState('');
@@ -29,35 +44,19 @@ export default function CPMMDEXSimulator() {
 
   // Popular trading pairs
   const mockPairs = [
-  { tokenA: 'bitcoin', tokenB: 'ethereum', label: 'BTC/ETH' },
-  { tokenA: 'ethereum', tokenB: 'cardano', label: 'ETH/ADA' },
-  { tokenA: 'bitcoin', tokenB: 'solana', label: 'BTC/SOL' },
-  { tokenA: 'ethereum', tokenB: 'polygon', label: 'ETH/MATIC' },
-  { tokenA: 'cardano', tokenB: 'solana', label: 'ADA/SOL' },
-  { tokenA: 'bitcoin', tokenB: 'chainlink', label: 'BTC/LINK' },
-  { tokenA: 'ethereum', tokenB: 'avalanche-2', label: 'ETH/AVAX' },
-  { tokenA: 'solana', tokenB: 'polygon', label: 'SOL/MATIC' },
-  { tokenA: 'cardano', tokenB: 'chainlink', label: 'ADA/LINK' },
-  { tokenA: 'bitcoin', tokenB: 'polkadot', label: 'BTC/DOT' },
-  { tokenA: 'ethereum', tokenB: 'uniswap', label: 'ETH/UNI' },
-  { tokenA: 'solana', tokenB: 'avalanche-2', label: 'SOL/AVAX' },
-  { tokenA: 'litecoin', tokenB: 'bitcoin', label: 'LTC/BTC' },
-  { tokenA: 'dogecoin', tokenB: 'ethereum', label: 'DOGE/ETH' },
-  { tokenA: 'tron', tokenB: 'solana', label: 'TRX/SOL' },
-  { tokenA: 'stellar', tokenB: 'ripple', label: 'XLM/XRP' },
-  { tokenA: 'near', tokenB: 'ethereum', label: 'NEAR/ETH' },
-  { tokenA: 'aptos', tokenB: 'bitcoin', label: 'APT/BTC' },
-  { tokenA: 'optimism', tokenB: 'ethereum', label: 'OP/ETH' },
-  { tokenA: 'arbitrum', tokenB: 'ethereum', label: 'ARB/ETH' },
-  { tokenA: 'maker', tokenB: 'uniswap', label: 'MKR/UNI' },
-  { tokenA: 'injective-protocol', tokenB: 'avalanche-2', label: 'INJ/AVAX' },
-  { tokenA: 'vechain', tokenB: 'polygon', label: 'VET/MATIC' },
-  { tokenA: 'algorand', tokenB: 'cardano', label: 'ALGO/ADA' },
-  { tokenA: 'theta-token', tokenB: 'bitcoin', label: 'THETA/BTC' },
-  { tokenA: 'the-graph', tokenB: 'ethereum', label: 'GRT/ETH' },
-  { tokenA: 'tezos', tokenB: 'solana', label: 'XTZ/SOL' }
-];
-
+    { tokenA: 'bitcoin', tokenB: 'ethereum', label: 'BTC/ETH' },
+    { tokenA: 'ethereum', tokenB: 'cardano', label: 'ETH/ADA' },
+    { tokenA: 'bitcoin', tokenB: 'solana', label: 'BTC/SOL' },
+    { tokenA: 'ethereum', tokenB: 'polygon', label: 'ETH/MATIC' },
+    { tokenA: 'cardano', tokenB: 'solana', label: 'ADA/SOL' },
+    { tokenA: 'bitcoin', tokenB: 'chainlink', label: 'BTC/LINK' },
+    { tokenA: 'ethereum', tokenB: 'avalanche-2', label: 'ETH/AVAX' },
+    { tokenA: 'solana', tokenB: 'polygon', label: 'SOL/MATIC' },
+    { tokenA: 'cardano', tokenB: 'chainlink', label: 'ADA/LINK' },
+    { tokenA: 'bitcoin', tokenB: 'polkadot', label: 'BTC/DOT' },
+    { tokenA: 'ethereum', tokenB: 'uniswap', label: 'ETH/UNI' },
+    { tokenA: 'solana', tokenB: 'avalanche-2', label: 'SOL/AVAX' }
+  ];
 
   // Fetch popular pairs data
   const fetchPopularPairs = async () => {
@@ -178,107 +177,86 @@ export default function CPMMDEXSimulator() {
     const amountA = parseFloat(liquidityA);
     const amountB = parseFloat(liquidityB);
     
-    const reserveAValue = amountA * tokenAData.price;
-    const reserveBValue = amountB * tokenBData.price;
-    
-    setReserveA(amountA);
-    setReserveB(amountB);
-    setConstantK(amountA * amountB);
-    setStep('trading');
+    try {
+      const newPoolState = initializePool(
+        selectedFormula,
+        amountA,
+        amountB,
+        tokenAData.price,
+        tokenBData.price,
+        formulaConfig
+      );
+      
+      setPoolState(newPoolState);
+      setStep('trading');
+    } catch (error) {
+      setError(error.message);
+    }
   };
 
-  // Calculate swap output using CPMM formula
-  const calculateSwapOutput = (inputAmount, direction) => {
-    if (!inputAmount || !reserveA || !reserveB) return { output: 0, impact: 0 };
+  // Execute swap function
+  const handleExecuteSwap = () => {
+    if (!swapAmount || parseFloat(swapAmount) <= 0 || !poolState) return;
     
-    const input = parseFloat(inputAmount);
-    
-    let newReserveIn, newReserveOut, reserveIn, reserveOut, priceIn, priceOut;
-    
-    if (direction === 'AtoB') {
-      reserveIn = reserveA;
-      reserveOut = reserveB;
-      priceIn = tokenAData.price;
-      priceOut = tokenBData.price;
-      newReserveIn = reserveIn + input;
-      newReserveOut = constantK / newReserveIn;
-    } else {
-      reserveIn = reserveB;
-      reserveOut = reserveA;
-      priceIn = tokenBData.price;
-      priceOut = tokenAData.price;
-      newReserveIn = reserveIn + input;
-      newReserveOut = constantK / newReserveIn;
+    try {
+      const newPoolState = executeSwap(
+        selectedFormula,
+        parseFloat(swapAmount),
+        swapDirection,
+        poolState,
+        { priceA: tokenAData.price, priceB: tokenBData.price }
+      );
+      
+      setPoolState(newPoolState);
+      setSwapAmount('');
+      setOutputAmount(0);
+      setPriceImpact(0);
+    } catch (error) {
+      setError(error.message);
     }
-    
-    const output = reserveOut - newReserveOut;
-    
-    // Calculate price impact
-    const oldPrice = (reserveIn * priceIn) / (reserveOut * priceOut);
-    const newPrice = (newReserveIn * priceIn) / (newReserveOut * priceOut);
-    const impact = ((newPrice - oldPrice) / oldPrice) * 100;
-    
-    return { output, impact };
-  };
-
-  // Execute swap
-  const executeSwap = () => {
-    if (!swapAmount || parseFloat(swapAmount) <= 0) return;
-    
-    const input = parseFloat(swapAmount);
-    const { output } = calculateSwapOutput(swapAmount, swapDirection);
-    
-    if (swapDirection === 'AtoB') {
-      const newReserveA = reserveA + input;
-      const newReserveB = constantK / newReserveA;
-      setReserveA(newReserveA);
-      setReserveB(newReserveB);
-    } else {
-      const newReserveB = reserveB + input;
-      const newReserveA = constantK / newReserveB;
-      setReserveA(newReserveA);
-      setReserveB(newReserveB);
-    }
-    
-    setSwapAmount('');
-    setOutputAmount(0);
-    setPriceImpact(0);
   };
 
   // Update swap preview when amount changes
   useEffect(() => {
-    if (swapAmount && step === 'trading') {
-      const { output, impact } = calculateSwapOutput(swapAmount, swapDirection);
-      setOutputAmount(output);
-      setPriceImpact(impact);
+    if (swapAmount && step === 'trading' && poolState) {
+      try {
+        const result = calculateSwapOutput(
+          selectedFormula,
+          parseFloat(swapAmount),
+          swapDirection,
+          poolState,
+          { priceA: tokenAData.price, priceB: tokenBData.price }
+        );
+        setOutputAmount(result.output);
+        setPriceImpact(result.impact);
+      } catch (error) {
+        setOutputAmount(0);
+        setPriceImpact(0);
+      }
     } else {
       setOutputAmount(0);
       setPriceImpact(0);
     }
-  }, [swapAmount, swapDirection, reserveA, reserveB, constantK]);
+  }, [swapAmount, swapDirection, poolState, selectedFormula, step]);
 
   // Calculate current pool prices
-  const getCurrentPoolPrice = () => {
-    if (!reserveA || !reserveB || !tokenAData || !tokenBData) return { priceA: 0, priceB: 0 };
+  const getCurrentPoolPricing = () => {
+    if (!poolState || !tokenAData || !tokenBData) return { priceA: 0, priceB: 0 };
     
-    const totalValueA = reserveA * tokenAData.price;
-    const totalValueB = reserveB * tokenBData.price;
-    const totalValue = totalValueA + totalValueB;
-    
-    return {
-      priceA: totalValue / (2 * reserveA),
-      priceB: totalValue / (2 * reserveB)
-    };
+    return getPoolPricing(selectedFormula, poolState, {
+      priceA: tokenAData.price,
+      priceB: tokenBData.price
+    });
   };
 
-  const currentPools = getCurrentPoolPrice();
+  const currentPools = getCurrentPoolPricing();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">CPMM DEX Simulator</h1>
-          <p className="text-gray-600">Constant Product Market Maker with Real Token Prices</p>
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Multi-AMM DEX Simulator</h1>
+          <p className="text-gray-600">Compare Different Automated Market Maker Formulas</p>
         </div>
 
         {/* Step 0: Popular Trading Pairs */}
@@ -404,100 +382,225 @@ export default function CPMMDEXSimulator() {
           </div>
         )}
 
-        {/* Step 2: Add Liquidity */}
+        {/* Step 2: AMM Formula Selection + Add Liquidity */}
         {step === 'liquidity' && tokenAData && tokenBData && (
-          <div className="bg-white rounded-2xl shadow-xl p-8 mb-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-semibold text-black">Add Initial Liquidity</h2>
-              <button
-                onClick={() => {
-                  setStep('pairs');
-                  setTokenAData(null);
-                  setTokenBData(null);
-                  setTokenA('');
-                  setTokenB('');
-                }}
-                className="text-blue-600 hover:text-blue-700 font-medium"
-              >
-                ← Change Pair
-              </button>
-            </div>
-            
-            {/* Token Prices */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              <div className="bg-blue-50 rounded-lg p-4">
-                <h3 className="font-semibold text-lg text-black">{tokenAData.name}</h3>
-                <p className="text-2xl font-bold text-blue-600">${tokenAData.price.toFixed(4)}</p>
-                <p className={`text-sm flex items-center ${tokenAData.change24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {tokenAData.change24h >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
-                  {tokenAData.change24h.toFixed(2)}%
-                </p>
+          <div className="space-y-6">
+            {/* AMM Formula Selection */}
+            <div className="bg-white rounded-2xl shadow-xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-black">Select AMM Formula</h2>
+                <button
+                  onClick={() => {
+                    setStep('pairs');
+                    setTokenAData(null);
+                    setTokenBData(null);
+                    setTokenA('');
+                    setTokenB('');
+                  }}
+                  className="text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  ← Change Pair
+                </button>
               </div>
-              <div className="bg-purple-50 rounded-lg p-4">
-                <h3 className="font-semibold text-lg text-black">{tokenBData.name}</h3>
-                <p className="text-2xl font-bold text-purple-600">${tokenBData.price.toFixed(4)}</p>
-                <p className={`text-sm flex items-center ${tokenBData.change24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {tokenBData.change24h >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
-                  {tokenBData.change24h.toFixed(2)}%
-                </p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                {Object.entries(AMM_CONFIGS).map(([key, config]) => (
+                  <div
+                    key={key}
+                    onClick={() => setSelectedFormula(key)}
+                    className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                      selectedFormula === key
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <h3 className="font-semibold text-gray-900">{config.name}</h3>
+                      <Info className="w-4 h-4 text-gray-500" />
+                    </div>
+                    <p className="text-sm text-gray-700 mb-2">{config.description}</p>
+                    <div className="text-xs space-y-1 text-gray-600">
+                      <div><strong className="text-gray-800">Formula:</strong> {config.formula}</div>
+                      <div><strong className="text-gray-800">Best for:</strong> {config.bestFor}</div>
+                      <div><strong className="text-gray-800">Slippage:</strong> {config.slippage}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
+
+              {/* Formula-specific configurations */}
+              {selectedFormula === AMM_FORMULAS.CONSTANT_MEAN && (
+                <div className="bg-yellow-50 rounded-lg p-4 mb-4">
+                  <h4 className="font-medium text-black mb-3">Balancer Weights Configuration</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">
+                        {tokenAData.name} Weight
+                      </label>
+                      <input
+                        type="number"
+                        min="0.1"
+                        max="0.9"
+                        step="0.1"
+                        value={formulaConfig.weightA}
+                        onChange={(e) => setFormulaConfig({
+                          ...formulaConfig,
+                          weightA: parseFloat(e.target.value),
+                          weightB: 1 - parseFloat(e.target.value)
+                        })}
+                        className="w-full p-2 border border-gray-300 rounded text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">
+                        {tokenBData.name} Weight
+                      </label>
+                      <input
+                        type="number"
+                        value={formulaConfig.weightB}
+                        readOnly
+                        className="w-full p-2 border border-gray-300 rounded bg-gray-100 text-gray-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selectedFormula === AMM_FORMULAS.CONCENTRATED && (
+                <div className="bg-purple-50 rounded-lg p-4 mb-4">
+                  <h4 className="font-medium text-black mb-3">Concentrated Liquidity Range</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">
+                        Min Price Ratio
+                      </label>
+                      <input
+                        type="number"
+                        min="0.1"
+                        max="1"
+                        step="0.1"
+                        value={formulaConfig.minPrice}
+                        onChange={(e) => setFormulaConfig({
+                          ...formulaConfig,
+                          minPrice: parseFloat(e.target.value)
+                        })}
+                        className="w-full p-2 border border-gray-300 rounded text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">
+                        Max Price Ratio
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        step="0.5"
+                        value={formulaConfig.maxPrice}
+                        onChange={(e) => setFormulaConfig({
+                          ...formulaConfig,
+                          maxPrice: parseFloat(e.target.value)
+                        })}
+                        className="w-full p-2 border border-gray-300 rounded text-gray-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Liquidity Inputs */}
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
-                  {tokenAData.name} Amount
-                </label>
-                <input
-                  type="number"
-                  value={liquidityA}
-                  onChange={(e) => setLiquidityA(e.target.value)}
-                  placeholder="0.0"
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-500"
-                />
-                {liquidityA && (
-                  <p className="text-sm text-gray-500 mt-1">
-                    Value: ${(parseFloat(liquidityA) * tokenAData.price).toFixed(2)}
+            {/* Add Liquidity Section */}
+            <div className="bg-white rounded-2xl shadow-xl p-8">
+              <h2 className="text-2xl font-semibold mb-6 text-black">Add Initial Liquidity</h2>
+              
+              {/* Token Prices */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <h3 className="font-semibold text-lg text-black">{tokenAData.name}</h3>
+                  <p className="text-2xl font-bold text-blue-600">${tokenAData.price.toFixed(4)}</p>
+                  <p className={`text-sm flex items-center ${tokenAData.change24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {tokenAData.change24h >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
+                    {tokenAData.change24h.toFixed(2)}%
                   </p>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
-                  {tokenBData.name} Amount
-                </label>
-                <input
-                  type="number"
-                  value={liquidityB}
-                  onChange={(e) => setLiquidityB(e.target.value)}
-                  placeholder="0.0"
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900 placeholder-gray-500"
-                />
-                {liquidityB && (
-                  <p className="text-sm text-gray-500 mt-1">
-                    Value: ${(parseFloat(liquidityB) * tokenBData.price).toFixed(2)}
+                </div>
+                <div className="bg-purple-50 rounded-lg p-4">
+                  <h3 className="font-semibold text-lg text-black">{tokenBData.name}</h3>
+                  <p className="text-2xl font-bold text-purple-600">${tokenBData.price.toFixed(4)}</p>
+                  <p className={`text-sm flex items-center ${tokenBData.change24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {tokenBData.change24h >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
+                    {tokenBData.change24h.toFixed(2)}%
                   </p>
-                )}
+                </div>
               </div>
-              <button
-                onClick={addLiquidity}
-                disabled={!liquidityA || !liquidityB}
-                className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center"
-              >
-                <Plus className="w-5 h-5 mr-2" />
-                Add Liquidity
-              </button>
+
+              {/* Current Formula Display */}
+              <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                <div className="flex items-center mb-2">
+                  <Settings className="w-5 h-5 text-gray-600 mr-2" />
+                  <span className="font-medium text-black">Selected Formula: {AMM_CONFIGS[selectedFormula].name}</span>
+                </div>
+                <p className="text-sm text-gray-600">{AMM_CONFIGS[selectedFormula].description}</p>
+              </div>
+
+              {/* Liquidity Inputs */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 mb-2">
+                    {tokenAData.name} Amount
+                  </label>
+                  <input
+                    type="number"
+                    value={liquidityA}
+                    onChange={(e) => setLiquidityA(e.target.value)}
+                    placeholder="0.0"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-500"
+                  />
+                  {liquidityA && (
+                    <p className="text-sm text-gray-500 mt-1">
+                      Value: ${(parseFloat(liquidityA) * tokenAData.price).toFixed(2)}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 mb-2">
+                    {tokenBData.name} Amount
+                  </label>
+                  <input
+                    type="number"
+                    value={liquidityB}
+                    onChange={(e) => setLiquidityB(e.target.value)}
+                    placeholder="0.0"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900 placeholder-gray-500"
+                  />
+                  {liquidityB && (
+                    <p className="text-sm text-gray-500 mt-1">
+                      Value: ${(parseFloat(liquidityB) * tokenBData.price).toFixed(2)}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={addLiquidity}
+                  disabled={!liquidityA || !liquidityB}
+                  className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center"
+                >
+                  <Plus className="w-5 h-5 mr-2" />
+                  Add Liquidity with {AMM_CONFIGS[selectedFormula].name}
+                </button>
+              </div>
             </div>
           </div>
         )}
 
         {/* Step 3: Trading Interface */}
-        {step === 'trading' && (
+        {step === 'trading' && poolState && (
           <div className="space-y-6">
             {/* Navigation */}
             <div className="bg-white rounded-lg p-4 flex justify-between items-center">
               <div className="text-sm text-gray-600">
                 Trading: <span className="font-semibold text-black">{tokenAData.name}/{tokenBData.name}</span>
+                <span className="ml-4 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
+                  {AMM_CONFIGS[selectedFormula].name}
+                </span>
               </div>
               <button
                 onClick={() => {
@@ -508,9 +611,7 @@ export default function CPMMDEXSimulator() {
                   setTokenB('');
                   setLiquidityA('');
                   setLiquidityB('');
-                  setReserveA(0);
-                  setReserveB(0);
-                  setConstantK(0);
+                  setPoolState(null);
                   setSwapAmount('');
                   setOutputAmount(0);
                   setPriceImpact(0);
@@ -524,18 +625,24 @@ export default function CPMMDEXSimulator() {
             {/* Pool Stats */}
             <div className="bg-white rounded-2xl shadow-xl p-6">
               <h2 className="text-xl font-semibold mb-4 text-black">Pool Statistics</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-medium text-gray-900">Constant K</h3>
-                  <p className="text-xl font-bold text-gray-900">{constantK.toFixed(2)}</p>
+                  <h3 className="font-medium text-gray-900">Formula</h3>
+                  <p className="text-lg font-bold text-gray-900">{AMM_CONFIGS[selectedFormula].name}</p>
                 </div>
+                {selectedFormula === AMM_FORMULAS.CPMM && (
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="font-medium text-gray-900">Constant K</h3>
+                    <p className="text-xl font-bold text-gray-900">{poolState.constantK?.toFixed(2)}</p>
+                  </div>
+                )}
                 <div className="bg-blue-50 rounded-lg p-4">
                   <h3 className="font-medium text-gray-900">{tokenAData.name} Reserve</h3>
-                  <p className="text-xl font-bold text-blue-600">{reserveA.toFixed(4)}</p>
+                  <p className="text-xl font-bold text-blue-600">{poolState.reserveA?.toFixed(4)}</p>
                 </div>
                 <div className="bg-purple-50 rounded-lg p-4">
                   <h3 className="font-medium text-gray-900">{tokenBData.name} Reserve</h3>
-                  <p className="text-xl font-bold text-purple-600">{reserveB.toFixed(4)}</p>
+                  <p className="text-xl font-bold text-purple-600">{poolState.reserveB?.toFixed(4)}</p>
                 </div>
               </div>
             </div>
@@ -634,22 +741,26 @@ export default function CPMMDEXSimulator() {
                 {swapAmount && outputAmount > 0 && (
                   <div className="bg-gray-50 rounded-lg p-4 space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-gray-900">Youll receive:</span>
+                      <span className="text-gray-900">You'll receive:</span>
                       <span className="font-semibold text-lg text-gray-900">
                         {outputAmount.toFixed(6)} {swapDirection === 'AtoB' ? tokenBData.name : tokenAData.name}
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-gray-900">Price Impact:</span>
-                      <span className={`font-semibold ${priceImpact > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      <span className={`font-semibold ${Math.abs(priceImpact) > 5 ? 'text-red-600' : Math.abs(priceImpact) > 1 ? 'text-yellow-600' : 'text-green-600'}`}>
                         {priceImpact.toFixed(2)}%
                       </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-900">Formula:</span>
+                      <span className="font-medium text-gray-900">{AMM_CONFIGS[selectedFormula].name}</span>
                     </div>
                   </div>
                 )}
 
                 <button
-                  onClick={executeSwap}
+                  onClick={handleExecuteSwap}
                   disabled={!swapAmount || parseFloat(swapAmount) <= 0}
                   className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-400 text-white font-semibold py-3 px-6 rounded-lg transition-all flex items-center justify-center"
                 >
@@ -670,12 +781,11 @@ export default function CPMMDEXSimulator() {
                   setTokenBData(null);
                   setLiquidityA('');
                   setLiquidityB('');
-                  setReserveA(0);
-                  setReserveB(0);
-                  setConstantK(0);
+                  setPoolState(null);
                   setSwapAmount('');
                   setOutputAmount(0);
                   setPriceImpact(0);
+                  setSelectedFormula(AMM_FORMULAS.CPMM);
                 }}
                 className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
               >
@@ -685,6 +795,6 @@ export default function CPMMDEXSimulator() {
           </div>
         )}
       </div>
-      </div>
-    );
-  }
+    </div>
+  );
+}
