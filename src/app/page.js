@@ -50,20 +50,36 @@ export default function CPMMDEXSimulator() {
   const [swapValidation, setSwapValidation] = useState({ isValid: true });
 
   // Popular trading pairs
-  const mockPairs = [
-    { tokenA: 'bitcoin', tokenB: 'ethereum', label: 'BTC/ETH' },
-    { tokenA: 'ethereum', tokenB: 'cardano', label: 'ETH/ADA' },
-    { tokenA: 'bitcoin', tokenB: 'solana', label: 'BTC/SOL' },
-    { tokenA: 'ethereum', tokenB: 'polygon', label: 'ETH/MATIC' },
-    { tokenA: 'cardano', tokenB: 'solana', label: 'ADA/SOL' },
-    { tokenA: 'bitcoin', tokenB: 'chainlink', label: 'BTC/LINK' },
-    { tokenA: 'ethereum', tokenB: 'avalanche-2', label: 'ETH/AVAX' },
-    { tokenA: 'solana', tokenB: 'polygon', label: 'SOL/MATIC' },
-    { tokenA: 'cardano', tokenB: 'chainlink', label: 'ADA/LINK' },
-    { tokenA: 'bitcoin', tokenB: 'polkadot', label: 'BTC/DOT' },
-    { tokenA: 'ethereum', tokenB: 'uniswap', label: 'ETH/UNI' },
-    { tokenA: 'solana', tokenB: 'avalanche-2', label: 'SOL/AVAX' }
-  ];
+ const mockPairs = [
+  { tokenA: 'bitcoin', tokenB: 'ethereum', label: 'BTC/ETH' },
+  { tokenA: 'ethereum', tokenB: 'cardano', label: 'ETH/ADA' },
+  { tokenA: 'bitcoin', tokenB: 'solana', label: 'BTC/SOL' },
+  { tokenA: 'ethereum', tokenB: 'polygon', label: 'ETH/MATIC' },
+  { tokenA: 'cardano', tokenB: 'solana', label: 'ADA/SOL' },
+  { tokenA: 'bitcoin', tokenB: 'chainlink', label: 'BTC/LINK' },
+  { tokenA: 'ethereum', tokenB: 'avalanche-2', label: 'ETH/AVAX' },
+  { tokenA: 'solana', tokenB: 'polygon', label: 'SOL/MATIC' },
+  { tokenA: 'cardano', tokenB: 'chainlink', label: 'ADA/LINK' },
+  { tokenA: 'bitcoin', tokenB: 'polkadot', label: 'BTC/DOT' },
+  { tokenA: 'ethereum', tokenB: 'uniswap', label: 'ETH/UNI' },
+  { tokenA: 'solana', tokenB: 'avalanche-2', label: 'SOL/AVAX' },
+  { tokenA: 'litecoin', tokenB: 'bitcoin', label: 'LTC/BTC' },
+  { tokenA: 'dogecoin', tokenB: 'ethereum', label: 'DOGE/ETH' },
+  { tokenA: 'tron', tokenB: 'solana', label: 'TRX/SOL' },
+  { tokenA: 'stellar', tokenB: 'ripple', label: 'XLM/XRP' },
+  { tokenA: 'near', tokenB: 'ethereum', label: 'NEAR/ETH' },
+  { tokenA: 'aptos', tokenB: 'bitcoin', label: 'APT/BTC' },
+  { tokenA: 'optimism', tokenB: 'ethereum', label: 'OP/ETH' },
+  { tokenA: 'arbitrum', tokenB: 'ethereum', label: 'ARB/ETH' },
+  { tokenA: 'maker', tokenB: 'uniswap', label: 'MKR/UNI' },
+  { tokenA: 'injective-protocol', tokenB: 'avalanche-2', label: 'INJ/AVAX' },
+  { tokenA: 'vechain', tokenB: 'polygon', label: 'VET/MATIC' },
+  { tokenA: 'algorand', tokenB: 'cardano', label: 'ALGO/ADA' },
+  { tokenA: 'theta-token', tokenB: 'bitcoin', label: 'THETA/BTC' },
+  { tokenA: 'the-graph', tokenB: 'ethereum', label: 'GRT/ETH' },
+  { tokenA: 'tezos', tokenB: 'solana', label: 'XTZ/SOL' }
+];
+
 
   // Fetch popular pairs data
   const fetchPopularPairs = async () => {
