@@ -48,6 +48,155 @@ export const AMM_CONFIGS = {
   }
 };
 
+// Helper function to calculate USD values
+export function calculateUSDValues(poolState, tokenPrices) {
+  const reserveAUSD = poolState.reserveA * tokenPrices.priceA;
+  const reserveBUSD = poolState.reserveB * tokenPrices.priceB;
+  const totalLiquidityUSD = reserveAUSD + reserveBUSD;
+  
+  return {
+    reserveAUSD,
+    reserveBUSD,
+    totalLiquidityUSD
+  };
+}
+
+// Check if swap is valid (no negative reserves)
+export function validateSwapAmount(formula, inputAmount, direction, poolState, tokenPrices) {
+  try {
+    const result = calculateSwapOutput(formula, inputAmount, direction, poolState, tokenPrices);
+    
+    // Check for negative reserves
+    if (result.newReserveA <= 0 || result.newReserveB <= 0) {
+      return {
+        isValid: false,
+        maxInput: calculateMaxSwapInput(formula, direction, poolState, tokenPrices),
+        error: 'Insufficient liquidity - would result in negative reserves'
+      };
+    }
+    
+    // Check for unrealistic output (more than 99% of reserves)
+    const maxOutputA = poolState.reserveA * 0.99;
+    const maxOutputB = poolState.reserveB * 0.99;
+    
+    if (direction === 'AtoB' && result.output > maxOutputB) {
+      return {
+        isValid: false,
+        maxInput: calculateMaxSwapInput(formula, direction, poolState, tokenPrices),
+        error: 'Swap amount too large - insufficient liquidity'
+      };
+    }
+    
+    if (direction === 'BtoA' && result.output > maxOutputA) {
+      return {
+        isValid: false,
+        maxInput: calculateMaxSwapInput(formula, direction, poolState, tokenPrices),
+        error: 'Swap amount too large - insufficient liquidity'
+      };
+    }
+    
+    return { isValid: true, result };
+  } catch (error) {
+    return {
+      isValid: false,
+      maxInput: 0,
+      error: error.message
+    };
+  }
+}
+
+// Calculate maximum safe swap input
+function calculateMaxSwapInput(formula, direction, poolState, tokenPrices, maxSlippage = 0.99) {
+  if (formula === AMM_FORMULAS.CPMM) {
+    // For CPMM, calculate max input that leaves 1% of output token
+    if (direction === 'AtoB') {
+      const maxOutput = poolState.reserveB * maxSlippage;
+      const targetReserveB = poolState.reserveB - maxOutput;
+      const targetReserveA = poolState.constantK / targetReserveB;
+      return Math.max(0, targetReserveA - poolState.reserveA);
+    } else {
+      const maxOutput = poolState.reserveA * maxSlippage;
+      const targetReserveA = poolState.reserveA - maxOutput;
+      const targetReserveB = poolState.constantK / targetReserveA;
+      return Math.max(0, targetReserveB - poolState.reserveB);
+    }
+  }
+  
+  // For other formulas, use binary search approach
+  let low = 0;
+  let high = direction === 'AtoB' ? poolState.reserveA * 10 : poolState.reserveB * 10;
+  let maxValid = 0;
+  
+  for (let i = 0; i < 50; i++) { // 50 iterations should be enough for precision
+    const mid = (low + high) / 2;
+    try {
+      const result = calculateSwapOutput(formula, mid, direction, poolState, tokenPrices);
+      if (result.newReserveA > 0 && result.newReserveB > 0 && result.output > 0) {
+        maxValid = mid;
+        low = mid;
+      } else {
+        high = mid;
+      }
+    } catch {
+      high = mid;
+    }
+  }
+  
+  return maxValid * 0.95; // Add 5% safety margin
+}
+
+// Add liquidity to existing pool
+export function addLiquidityToPool(formula, addAmountA, addAmountB, currentPoolState, tokenPrices) {
+  const newReserveA = currentPoolState.reserveA + addAmountA;
+  const newReserveB = currentPoolState.reserveB + addAmountB;
+  
+  switch (formula) {
+    case AMM_FORMULAS.CPMM:
+      return {
+        ...currentPoolState,
+        reserveA: newReserveA,
+        reserveB: newReserveB,
+        constantK: newReserveA * newReserveB
+      };
+    
+    case AMM_FORMULAS.CONSTANT_SUM:
+      const newValueA = newReserveA * tokenPrices.priceA;
+      const newValueB = newReserveB * tokenPrices.priceB;
+      return {
+        ...currentPoolState,
+        reserveA: newReserveA,
+        reserveB: newReserveB,
+        constantSum: newValueA + newValueB
+      };
+    
+    case AMM_FORMULAS.CONSTANT_MEAN:
+      return {
+        ...currentPoolState,
+        reserveA: newReserveA,
+        reserveB: newReserveB,
+        constantMean: Math.pow(newReserveA, currentPoolState.weightA) * Math.pow(newReserveB, currentPoolState.weightB)
+      };
+    
+    case AMM_FORMULAS.CURVE_STABLE:
+      return {
+        ...currentPoolState,
+        reserveA: newReserveA,
+        reserveB: newReserveB
+      };
+    
+    case AMM_FORMULAS.CONCENTRATED:
+      return {
+        ...currentPoolState,
+        reserveA: newReserveA,
+        reserveB: newReserveB,
+        constantK: newReserveA * newReserveB
+      };
+    
+    default:
+      throw new Error(`Adding liquidity not supported for formula: ${formula}`);
+  }
+}
+
 // Initialize pool based on formula
 export function initializePool(formula, amountA, amountB, priceA, priceB, config = {}) {
   switch (formula) {

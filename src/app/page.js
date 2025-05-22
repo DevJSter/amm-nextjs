@@ -7,7 +7,10 @@ import {
   initializePool, 
   calculateSwapOutput, 
   executeSwap, 
-  getPoolPricing 
+  getPoolPricing,
+  calculateUSDValues,
+  validateSwapAmount,
+  addLiquidityToPool
 } from './utility/fn.js';
 
 export default function CPMMDEXSimulator() {
@@ -35,62 +38,33 @@ export default function CPMMDEXSimulator() {
   const [liquidityA, setLiquidityA] = useState('');
   const [liquidityB, setLiquidityB] = useState('');
   const [poolState, setPoolState] = useState(null);
+  const [showAddLiquidity, setShowAddLiquidity] = useState(false);
+  const [additionalLiquidityA, setAdditionalLiquidityA] = useState('');
+  const [additionalLiquidityB, setAdditionalLiquidityB] = useState('');
   
   // Swap state
   const [swapAmount, setSwapAmount] = useState('');
   const [swapDirection, setSwapDirection] = useState('AtoB'); // 'AtoB' or 'BtoA'
   const [outputAmount, setOutputAmount] = useState(0);
   const [priceImpact, setPriceImpact] = useState(0);
+  const [swapValidation, setSwapValidation] = useState({ isValid: true });
 
   // Popular trading pairs
   const mockPairs = [
     { tokenA: 'bitcoin', tokenB: 'ethereum', label: 'BTC/ETH' },
+    { tokenA: 'ethereum', tokenB: 'cardano', label: 'ETH/ADA' },
+    { tokenA: 'bitcoin', tokenB: 'solana', label: 'BTC/SOL' },
+    { tokenA: 'ethereum', tokenB: 'polygon', label: 'ETH/MATIC' },
     { tokenA: 'cardano', tokenB: 'solana', label: 'ADA/SOL' },
-    { tokenA: 'ripple', tokenB: 'litecoin', label: 'XRP/LTC' },
-    { tokenA: 'polkadot', tokenB: 'chainlink', label: 'DOT/CHAINLINK' },
-    { tokenA: 'dogecoin', tokenB: 'shiba-inu', label: 'DOGE/SHIB' },  
-    { tokenA: 'uniswap', tokenB: 'aave', label: 'UNI/AAVE' },
-    { tokenA: 'stellar', tokenB: 'tron', label: 'XLM/TRX' },
-    { tokenA: 'monero', tokenB: 'dash', label: 'XMR/DASH' },
-    { tokenA: 'bitcoin-cash', tokenB: 'zcash', label: 'BCH/ZEC' },
-    { tokenA: 'litecoin', tokenB: 'bitcoin-cash', label: 'LTC/BCH' },
-    { tokenA: 'ethereum-classic', tokenB: 'bitcoin-gold', label: 'ETC/BTG' },
-    { tokenA: 'filecoin', tokenB: 'tezos', label: 'FIL/XTZ' },
-    { tokenA: 'vechain', tokenB: 'algorand', label: 'VET/ALGO' },
-    { tokenA: 'cosmos', tokenB: 'near-protocol', label: 'ATOM/NEAR' },
-    { tokenA: 'fantom', tokenB: 'harmony', label: 'FTM/ONE' },
-    { tokenA: 'elrond', tokenB: 'hedera', label: 'EGLD/HBAR' },
-    { tokenA: 'internet-computer', tokenB: 'flow', label: 'ICP/FLOW' },
-    { tokenA: 'the-sandbox', tokenB: 'decentraland', label: 'SAND/MANA' },
-    { tokenA: 'axie-infinity', tokenB: 'enjincoin', label: 'AXS/ENJ' },
-  { tokenA: 'bitcoin', tokenB: 'ethereum', label: 'BTC/ETH' },
-  { tokenA: 'ethereum', tokenB: 'cardano', label: 'ETH/ADA' },
-  { tokenA: 'bitcoin', tokenB: 'solana', label: 'BTC/SOL' },
-  { tokenA: 'ethereum', tokenB: 'polygon', label: 'ETH/MATIC' },
-  { tokenA: 'cardano', tokenB: 'solana', label: 'ADA/SOL' },
-  { tokenA: 'bitcoin', tokenB: 'chainlink', label: 'BTC/LINK' },
-  { tokenA: 'ethereum', tokenB: 'avalanche-2', label: 'ETH/AVAX' },
-  { tokenA: 'solana', tokenB: 'polygon', label: 'SOL/MATIC' },
-  { tokenA: 'cardano', tokenB: 'chainlink', label: 'ADA/LINK' },
-  { tokenA: 'bitcoin', tokenB: 'polkadot', label: 'BTC/DOT' },
-  { tokenA: 'ethereum', tokenB: 'uniswap', label: 'ETH/UNI' },
-  { tokenA: 'solana', tokenB: 'avalanche-2', label: 'SOL/AVAX' },
-  { tokenA: 'litecoin', tokenB: 'bitcoin', label: 'LTC/BTC' },
-  { tokenA: 'dogecoin', tokenB: 'ethereum', label: 'DOGE/ETH' },
-  { tokenA: 'tron', tokenB: 'solana', label: 'TRX/SOL' },
-  { tokenA: 'stellar', tokenB: 'ripple', label: 'XLM/XRP' },
-  { tokenA: 'near', tokenB: 'ethereum', label: 'NEAR/ETH' },
-  { tokenA: 'aptos', tokenB: 'bitcoin', label: 'APT/BTC' },
-  { tokenA: 'optimism', tokenB: 'ethereum', label: 'OP/ETH' },
-  { tokenA: 'arbitrum', tokenB: 'ethereum', label: 'ARB/ETH' },
-  { tokenA: 'maker', tokenB: 'uniswap', label: 'MKR/UNI' },
-  { tokenA: 'injective-protocol', tokenB: 'avalanche-2', label: 'INJ/AVAX' },
-  { tokenA: 'vechain', tokenB: 'polygon', label: 'VET/MATIC' },
-  { tokenA: 'algorand', tokenB: 'cardano', label: 'ALGO/ADA' },
-  { tokenA: 'theta-token', tokenB: 'bitcoin', label: 'THETA/BTC' },
-  { tokenA: 'the-graph', tokenB: 'ethereum', label: 'GRT/ETH' },
-  { tokenA: 'tezos', tokenB: 'solana', label: 'XTZ/SOL' }
-];
+    { tokenA: 'bitcoin', tokenB: 'chainlink', label: 'BTC/LINK' },
+    { tokenA: 'ethereum', tokenB: 'avalanche-2', label: 'ETH/AVAX' },
+    { tokenA: 'solana', tokenB: 'polygon', label: 'SOL/MATIC' },
+    { tokenA: 'cardano', tokenB: 'chainlink', label: 'ADA/LINK' },
+    { tokenA: 'bitcoin', tokenB: 'polkadot', label: 'BTC/DOT' },
+    { tokenA: 'ethereum', tokenB: 'uniswap', label: 'ETH/UNI' },
+    { tokenA: 'solana', tokenB: 'avalanche-2', label: 'SOL/AVAX' }
+  ];
+
   // Fetch popular pairs data
   const fetchPopularPairs = async () => {
     setLoading(true);
@@ -227,9 +201,48 @@ export default function CPMMDEXSimulator() {
     }
   };
 
-  // Execute swap function
+  // Add more liquidity to existing pool
+  const addMoreLiquidity = () => {
+    if (!additionalLiquidityA || !additionalLiquidityB || !poolState) return;
+    
+    const addAmountA = parseFloat(additionalLiquidityA);
+    const addAmountB = parseFloat(additionalLiquidityB);
+    
+    try {
+      const newPoolState = addLiquidityToPool(
+        selectedFormula,
+        addAmountA,
+        addAmountB,
+        poolState,
+        { priceA: tokenAData.price, priceB: tokenBData.price }
+      );
+      
+      setPoolState(newPoolState);
+      setAdditionalLiquidityA('');
+      setAdditionalLiquidityB('');
+      setShowAddLiquidity(false);
+    } catch (error) {
+      setError(error.message);
+    }
+  };
+
+  // Execute swap function with validation
   const handleExecuteSwap = () => {
     if (!swapAmount || parseFloat(swapAmount) <= 0 || !poolState) return;
+    
+    // Validate swap first
+    const validation = validateSwapAmount(
+      selectedFormula,
+      parseFloat(swapAmount),
+      swapDirection,
+      poolState,
+      { priceA: tokenAData.price, priceB: tokenBData.price }
+    );
+    
+    if (!validation.isValid) {
+      setError(validation.error);
+      return;
+    }
     
     try {
       const newPoolState = executeSwap(
@@ -244,6 +257,7 @@ export default function CPMMDEXSimulator() {
       setSwapAmount('');
       setOutputAmount(0);
       setPriceImpact(0);
+      setError(''); // Clear any previous errors
     } catch (error) {
       setError(error.message);
     }
@@ -253,33 +267,58 @@ export default function CPMMDEXSimulator() {
   useEffect(() => {
     if (swapAmount && step === 'trading' && poolState) {
       try {
-        const result = calculateSwapOutput(
+        // Validate the swap first
+        const validation = validateSwapAmount(
           selectedFormula,
           parseFloat(swapAmount),
           swapDirection,
           poolState,
           { priceA: tokenAData.price, priceB: tokenBData.price }
         );
-        setOutputAmount(result.output);
-        setPriceImpact(result.impact);
+        
+        setSwapValidation(validation);
+        
+        if (validation.isValid) {
+          const result = calculateSwapOutput(
+            selectedFormula,
+            parseFloat(swapAmount),
+            swapDirection,
+            poolState,
+            { priceA: tokenAData.price, priceB: tokenBData.price }
+          );
+          setOutputAmount(result.output);
+          setPriceImpact(result.impact);
+        } else {
+          setOutputAmount(0);
+          setPriceImpact(0);
+        }
       } catch (error) {
         setOutputAmount(0);
         setPriceImpact(0);
+        setSwapValidation({ isValid: false, error: error.message });
       }
     } else {
       setOutputAmount(0);
       setPriceImpact(0);
+      setSwapValidation({ isValid: true });
     }
   }, [swapAmount, swapDirection, poolState, selectedFormula, step]);
 
-  // Calculate current pool prices
+  // Calculate current pool prices and USD values
   const getCurrentPoolPricing = () => {
-    if (!poolState || !tokenAData || !tokenBData) return { priceA: 0, priceB: 0 };
+    if (!poolState || !tokenAData || !tokenBData) return { priceA: 0, priceB: 0, usdValues: { reserveAUSD: 0, reserveBUSD: 0, totalLiquidityUSD: 0 } };
     
-    return getPoolPricing(selectedFormula, poolState, {
+    const pricing = getPoolPricing(selectedFormula, poolState, {
       priceA: tokenAData.price,
       priceB: tokenBData.price
     });
+    
+    const usdValues = calculateUSDValues(poolState, {
+      priceA: tokenAData.price,
+      priceB: tokenBData.price
+    });
+    
+    return { ...pricing, usdValues };
   };
 
   const currentPools = getCurrentPoolPricing();
@@ -658,7 +697,7 @@ export default function CPMMDEXSimulator() {
             {/* Pool Stats */}
             <div className="bg-white rounded-2xl shadow-xl p-6">
               <h2 className="text-xl font-semibold mb-4 text-black">Pool Statistics</h2>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h3 className="font-medium text-gray-900">Formula</h3>
                   <p className="text-lg font-bold text-gray-900">{AMM_CONFIGS[selectedFormula].name}</p>
@@ -669,23 +708,90 @@ export default function CPMMDEXSimulator() {
                     <p className="text-xl font-bold text-gray-900">{poolState.constantK?.toFixed(2)}</p>
                   </div>
                 )}
+                <div className="bg-green-50 rounded-lg p-4">
+                  <h3 className="font-medium text-gray-900">Total Liquidity</h3>
+                  <p className="text-xl font-bold text-green-600">${currentPools.usdValues?.totalLiquidityUSD?.toFixed(2)}</p>
+                </div>
+                <div className="bg-blue-50 rounded-lg p-4 text-center">
+                  <button
+                    onClick={() => setShowAddLiquidity(!showAddLiquidity)}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add More Liquidity
+                  </button>
+                </div>
+              </div>
+              
+              {/* Add More Liquidity Section */}
+              {showAddLiquidity && (
+                <div className="bg-blue-50 rounded-lg p-4 mb-4">
+                  <h3 className="font-medium text-black mb-3">Add More Liquidity</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">
+                        Additional {tokenAData.name}
+                      </label>
+                      <input
+                        type="number"
+                        value={additionalLiquidityA}
+                        onChange={(e) => setAdditionalLiquidityA(e.target.value)}
+                        placeholder="0.0"
+                        className="w-full p-2 border border-gray-300 rounded text-gray-900 placeholder-gray-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">
+                        Additional {tokenBData.name}
+                      </label>
+                      <input
+                        type="number"
+                        value={additionalLiquidityB}
+                        onChange={(e) => setAdditionalLiquidityB(e.target.value)}
+                        placeholder="0.0"
+                        className="w-full p-2 border border-gray-300 rounded text-gray-900 placeholder-gray-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={addMoreLiquidity}
+                      disabled={!additionalLiquidityA || !additionalLiquidityB}
+                      className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded transition-colors"
+                    >
+                      Add Liquidity
+                    </button>
+                    <button
+                      onClick={() => setShowAddLiquidity(false)}
+                      className="bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {/* Reserve Details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-blue-50 rounded-lg p-4">
                   <h3 className="font-medium text-gray-900">{tokenAData.name} Reserve</h3>
-                  <p className="text-xl font-bold text-blue-600">{poolState.reserveA?.toFixed(4)}</p>
+                  <p className="text-xl font-bold text-blue-600">{poolState.reserveA?.toFixed(4)} {tokenAData.name}</p>
+                  <p className="text-sm text-gray-600">${currentPools.usdValues?.reserveAUSD?.toFixed(2)} USD</p>
                 </div>
                 <div className="bg-purple-50 rounded-lg p-4">
                   <h3 className="font-medium text-gray-900">{tokenBData.name} Reserve</h3>
-                  <p className="text-xl font-bold text-purple-600">{poolState.reserveB?.toFixed(4)}</p>
+                  <p className="text-xl font-bold text-purple-600">{poolState.reserveB?.toFixed(4)} {tokenBData.name}</p>
+                  <p className="text-sm text-gray-600">${currentPools.usdValues?.reserveBUSD?.toFixed(2)} USD</p>
                 </div>
               </div>
             </div>
 
             {/* Price Comparison */}
             <div className="bg-white rounded-2xl shadow-xl p-6">
-              <h2 className="text-xl font-semibold mb-4 text-black">Price Comparison</h2>
+              <h2 className="text-xl font-semibold mb-4 text-black">Price Comparison & Pool Composition</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <h3 className="font-medium text-black mb-3">{tokenAData.name}</h3>
+                  <h3 className="font-medium text-black mb-3">{tokenAData.name} Analysis</h3>
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <span className="text-gray-900">CoinGecko Price:</span>
@@ -696,15 +802,31 @@ export default function CPMMDEXSimulator() {
                       <span className="font-semibold text-gray-900">${currentPools.priceA.toFixed(4)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-900">Difference:</span>
+                      <span className="text-gray-900">Price Difference:</span>
                       <span className={`font-semibold ${currentPools.priceA > tokenAData.price ? 'text-green-600' : 'text-red-600'}`}>
                         {((currentPools.priceA - tokenAData.price) / tokenAData.price * 100).toFixed(2)}%
                       </span>
                     </div>
+                    <div className="border-t pt-2 mt-2">
+                      <div className="flex justify-between">
+                        <span className="text-gray-900">Pool Amount:</span>
+                        <span className="font-semibold text-blue-600">{poolState.reserveA?.toFixed(4)} {tokenAData.name}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-900">USD Value:</span>
+                        <span className="font-semibold text-gray-900">${currentPools.usdValues?.reserveAUSD?.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-900">Pool Share:</span>
+                        <span className="font-semibold text-gray-900">
+                          {((currentPools.usdValues?.reserveAUSD / currentPools.usdValues?.totalLiquidityUSD) * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div>
-                  <h3 className="font-medium text-black mb-3">{tokenBData.name}</h3>
+                  <h3 className="font-medium text-black mb-3">{tokenBData.name} Analysis</h3>
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <span className="text-gray-900">CoinGecko Price:</span>
@@ -715,10 +837,26 @@ export default function CPMMDEXSimulator() {
                       <span className="font-semibold text-gray-900">${currentPools.priceB.toFixed(4)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-900">Difference:</span>
+                      <span className="text-gray-900">Price Difference:</span>
                       <span className={`font-semibold ${currentPools.priceB > tokenBData.price ? 'text-green-600' : 'text-red-600'}`}>
                         {((currentPools.priceB - tokenBData.price) / tokenBData.price * 100).toFixed(2)}%
                       </span>
+                    </div>
+                    <div className="border-t pt-2 mt-2">
+                      <div className="flex justify-between">
+                        <span className="text-gray-900">Pool Amount:</span>
+                        <span className="font-semibold text-purple-600">{poolState.reserveB?.toFixed(4)} {tokenBData.name}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-900">USD Value:</span>
+                        <span className="font-semibold text-gray-900">${currentPools.usdValues?.reserveBUSD?.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-900">Pool Share:</span>
+                        <span className="font-semibold text-gray-900">
+                          {((currentPools.usdValues?.reserveBUSD / currentPools.usdValues?.totalLiquidityUSD) * 100).toFixed(1)}%
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -771,12 +909,40 @@ export default function CPMMDEXSimulator() {
                 </div>
 
                 {/* Swap Preview */}
-                {swapAmount && outputAmount > 0 && (
+                {swapAmount && !swapValidation.isValid && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 space-y-2">
+                    <div className="flex items-center text-red-700">
+                      <span className="font-semibold">⚠️ Invalid Swap</span>
+                    </div>
+                    <p className="text-red-700 text-sm">{swapValidation.error}</p>
+                    {swapValidation.maxInput && (
+                      <div className="mt-2">
+                        <p className="text-red-700 text-sm">
+                          Maximum safe amount: {swapValidation.maxInput.toFixed(6)} {swapDirection === 'AtoB' ? tokenAData.name : tokenBData.name}
+                        </p>
+                        <button
+                          onClick={() => setSwapAmount(swapValidation.maxInput.toFixed(6))}
+                          className="mt-1 text-xs bg-red-100 hover:bg-red-200 text-red-700 px-2 py-1 rounded transition-colors"
+                        >
+                          Use Max Amount
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {swapAmount && outputAmount > 0 && swapValidation.isValid && (
                   <div className="bg-gray-50 rounded-lg p-4 space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-gray-900">Youll receive:</span>
+                      <span className="text-gray-900">You&apos;ll receive:</span>
                       <span className="font-semibold text-lg text-gray-900">
                         {outputAmount.toFixed(6)} {swapDirection === 'AtoB' ? tokenBData.name : tokenAData.name}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-900">USD Value:</span>
+                      <span className="font-semibold text-gray-900">
+                        ${(outputAmount * (swapDirection === 'AtoB' ? tokenBData.price : tokenAData.price)).toFixed(2)}
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
@@ -789,16 +955,21 @@ export default function CPMMDEXSimulator() {
                       <span className="text-gray-900">Formula:</span>
                       <span className="font-medium text-gray-900">{AMM_CONFIGS[selectedFormula].name}</span>
                     </div>
+                    {Math.abs(priceImpact) > 5 && (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded p-2 mt-2">
+                        <p className="text-yellow-800 text-xs">⚠️ High price impact! Consider a smaller trade size.</p>
+                      </div>
+                    )}
                   </div>
                 )}
 
                 <button
                   onClick={handleExecuteSwap}
-                  disabled={!swapAmount || parseFloat(swapAmount) <= 0}
+                  disabled={!swapAmount || parseFloat(swapAmount) <= 0 || !swapValidation.isValid}
                   className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-400 text-white font-semibold py-3 px-6 rounded-lg transition-all flex items-center justify-center"
                 >
                   <ArrowDownUp className="w-5 h-5 mr-2" />
-                  Execute Swap
+                  {!swapValidation.isValid ? 'Invalid Swap' : 'Execute Swap'}
                 </button>
               </div>
             </div>
