@@ -774,7 +774,7 @@ export default function CPMMDEXSimulator() {
                 {swapAmount && outputAmount > 0 && (
                   <div className="bg-gray-50 rounded-lg p-4 space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-gray-900">You'll receive:</span>
+                      <span className="text-gray-900">Youll receive:</span>
                       <span className="font-semibold text-lg text-gray-900">
                         {outputAmount.toFixed(6)} {swapDirection === 'AtoB' ? tokenBData.name : tokenAData.name}
                       </span>
